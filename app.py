@@ -385,7 +385,7 @@ def update_dimensions_on_upload(image):
 
 def peft_parameter_name(source_name: str, adapter_name: str) -> str:
     """Map common LoRA safetensors key layouts to PEFT parameter names."""
-    target_name = source_name.removeprefix("diffusion_model.")
+    target_name = source_name.removeprefix("diffusion_model.").removeprefix("transformer.")
     for projection in ("lora_A", "lora_B"):
         target_name = target_name.replace(
             f".{projection}.default.weight",
@@ -575,12 +575,11 @@ def infer(
     if newly_loaded_adapter:
         # The copied hooks can execute while PEFT is injecting/loading the
         # adapter and corrupt LoRA tensors before we detach them. Reload the
-        # original safetensors directly into the now hook-free LoRA leaves.
-        from huggingface_hub import hf_hub_download
-        from safetensors.torch import load_file as load_safetensors
-
-        adapter_path = hf_hub_download(spec["repo"], spec["weights"])
-        source_state = load_safetensors(adapter_path, device="cpu")
+        # original tensors into the now hook-free LoRA leaves. Use the same
+        # Diffusers canonicalization as load_lora_weights(): it converts native
+        # Diffusers, PEFT `.default`, `diffusion_model`, and Kohya
+        # `lora_unet_*`/`.alpha` layouts into one stable key format.
+        source_state = pipe.lora_state_dict(spec["repo"], weight_name=spec["weights"])
         target_parameters = dict(pipe.transformer.named_parameters())
         restored_lora_tensors = 0
         missing_lora_tensors = []
@@ -599,7 +598,10 @@ def infer(
                 f"Could not restore {len(missing_lora_tensors)} LoRA tensors after hook detachment; "
                 f"first missing key: {missing_lora_tensors[0]}"
             )
-        print(f"Restored {restored_lora_tensors} pristine LoRA tensors from {adapter_path}.")
+        print(
+            f"Restored {restored_lora_tensors} pristine canonical LoRA tensors "
+            f"from {spec['repo']}/{spec['weights']}."
+        )
 
     if randomize_seed:
         seed = random.randint(0, MAX_SEED)

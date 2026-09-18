@@ -174,7 +174,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now qwen-image-edit.service
 ```
 
-Only one LoRA is kept injected at a time on the ROCm/offload path. Switching styles unloads the previous adapter, restores the canonical base-model offload groups, and then loads the selected adapter. LoRA files using either `.lora_A.weight` or PEFT's `.lora_A.default.weight` key convention are supported. Some third-party adapters may still be incompatible with this experimental path.
+Only one LoRA is kept injected at a time on the ROCm/offload path. Switching styles unloads the previous adapter, restores the canonical base-model offload groups, and then loads the selected adapter. Restoration uses Diffusers' canonical LoRA conversion path and supports native Diffusers keys, `diffusion_model.*`, PEFT's `.default.weight` convention, and Kohya `lora_unet_*`/`.alpha` checkpoints such as Manga-Tone. Some third-party adapters may still be incompatible with this experimental path.
 
 Validated on the test machine:
 
