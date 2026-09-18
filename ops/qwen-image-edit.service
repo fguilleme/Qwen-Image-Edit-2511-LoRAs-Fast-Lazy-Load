@@ -1,0 +1,19 @@
+[Unit]
+Description=Qwen Image Edit 2511 ROCm Gradio
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/Qwen-Image-Edit-2511-LoRAs-Fast-Lazy-Load
+EnvironmentFile=%h/.config/qwen-image-edit/environment
+ExecStart=%h/projects/Qwen-Image-Edit-2511-LoRAs-Fast-Lazy-Load/run-rocm.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=infinity
+TimeoutStopSec=30
+KillMode=control-group
+OOMPolicy=continue
+
+[Install]
+WantedBy=default.target

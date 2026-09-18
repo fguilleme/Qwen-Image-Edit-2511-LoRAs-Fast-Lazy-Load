@@ -411,8 +411,9 @@ class QwenImageTransformerBlock(nn.Module):
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Get modulation parameters for both streams
-        img_mod_params = self.img_mod(temb)  # [B, 6*dim]
-        txt_mod_params = self.txt_mod(temb)  # [B, 6*dim]
+        modulation_input = temb.float() if torch.version.hip is not None else temb
+        img_mod_params = self.img_mod(modulation_input).to(hidden_states.dtype)  # [B, 6*dim]
+        txt_mod_params = self.txt_mod(modulation_input).to(hidden_states.dtype)  # [B, 6*dim]
 
         # Split modulation parameters for norm1 and norm2
         img_mod1, img_mod2 = img_mod_params.chunk(2, dim=-1)  # Each [B, 3*dim]
@@ -627,6 +628,7 @@ class QwenImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
                     image_rotary_emb=image_rotary_emb,
                     joint_attention_kwargs=attention_kwargs,
                 )
+
 
         # Use only the image part (hidden_states) from the dual-stream blocks
         hidden_states = self.norm_out(hidden_states, temb)

@@ -8,6 +8,7 @@ automatically.  The public class name / call signature are unchanged.
 
 import torch
 import torch.nn.functional as F
+import os
 from typing import Optional, Tuple
 from diffusers.models.transformers.transformer_qwenimage import apply_rotary_emb_qwen
 
@@ -29,7 +30,17 @@ _fa3_available: bool = False
 _fa3_unavailable_reason: str = ""
 _flash_attn_func = None
 
-if _is_blackwell():
+_is_rocm = torch.version.hip is not None
+_force_sdpa = os.environ.get("QWEN_ATTENTION_BACKEND", "").lower() == "sdpa"
+
+if _is_rocm:
+    _fa3_unavailable_reason = (
+        "The bundled Hugging Face FlashAttention-3 kernel is CUDA-only. "
+        "ROCm detected; using PyTorch SDPA instead."
+    )
+elif _force_sdpa:
+    _fa3_unavailable_reason = "QWEN_ATTENTION_BACKEND=sdpa; using PyTorch SDPA."
+elif _is_blackwell():
     _fa3_unavailable_reason = (
         "FlashAttention-3 is not yet supported on Blackwell (sm_100) GPUs. "
         "Falling back to scaled-dot-product attention (SDPA)."
@@ -168,6 +179,7 @@ class QwenDoubleStreamAttnProcessorFA3:
                 "attention_mask is not supported on the FA3 path. "
                 "Either drop the mask or let the processor fall back to SDPA."
             )
+
 
         B, S_img, _ = hidden_states.shape
         S_txt = encoder_hidden_states.shape[1]
