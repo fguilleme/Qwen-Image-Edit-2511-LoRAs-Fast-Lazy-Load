@@ -466,6 +466,7 @@ def infer(
 
     adapter_name = spec["adapter_name"]
     newly_loaded_adapter = False
+    source_state = None
     if adapter_name not in LOADED_ADAPTERS:
         print(f"--- Downloading and Loading Adapter: {lora_adapter} ---")
         try:
@@ -481,7 +482,15 @@ def infer(
                 restored = restore_base_offload_groups()
                 print(f"Restored {restored} canonical offload groups after adapter unload.")
 
-            pipe.load_lora_weights(spec["repo"], weight_name=spec["weights"], adapter_name=adapter_name)
+            # Some community checkpoints mix native `lora_A/lora_B` keys with
+            # legacy Diffusers `.lora.down/.lora.up` keys. Diffusers checks
+            # only the first key and otherwise leaves the legacy subset
+            # unloaded. Canonicalize the complete state dict before injection.
+            from diffusers.utils.state_dict_utils import convert_unet_state_dict_to_peft
+
+            source_state = pipe.lora_state_dict(spec["repo"], weight_name=spec["weights"])
+            source_state = convert_unet_state_dict_to_peft(source_state)
+            pipe.load_lora_weights(source_state, adapter_name=adapter_name)
             restored_base_hooks = restore_base_offload_groups()
             print(f"Restored {restored_base_hooks} original base-layer offload hooks after PEFT injection.")
             LOADED_ADAPTERS.add(adapter_name)
@@ -513,7 +522,7 @@ def infer(
                     module._diffusers_hook.remove_hook(hook_name, recurse=False)
                     detached_wrapper_hooks += 1
 
-        if module_name.endswith(("img_mod.1.base_layer", "txt_mod.1.base_layer")) and hasattr(
+        if module_name.endswith(("img_mod.1", "txt_mod.1", "img_mod.1.base_layer", "txt_mod.1.base_layer")) and hasattr(
             module, "_diffusers_hook"
         ):
             casting_hook = module._diffusers_hook.get_hook("layerwise_casting")
@@ -579,7 +588,8 @@ def infer(
         # Diffusers canonicalization as load_lora_weights(): it converts native
         # Diffusers, PEFT `.default`, `diffusion_model`, and Kohya
         # `lora_unet_*`/`.alpha` layouts into one stable key format.
-        source_state = pipe.lora_state_dict(spec["repo"], weight_name=spec["weights"])
+        if source_state is None:
+            raise gr.Error(f"Canonical state dict unavailable for adapter {lora_adapter}.")
         target_parameters = dict(pipe.transformer.named_parameters())
         restored_lora_tensors = 0
         missing_lora_tensors = []
